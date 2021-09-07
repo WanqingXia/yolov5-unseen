@@ -269,13 +269,13 @@ def run(data,
         f.write(str(GT_t))
     with open('PR_result.txt', "w") as file:
         for i in range(nc):
-            print('class: %2s \n' % i)
+            # print('class: %2s \n' % i)
             file.write('class: %2s \n' % i)
             for j in range(len(iouv)):
-                print('Precision at %2f \n' % iouv[j])
-                print(Tp[i][j] / (Pred_t[i] + 1e-16))
-                print('Recall at %2f \n' % iouv[j])
-                print(Tp[i][j] / (GT_t[i] + 1e-16))
+                # print('Precision at %2f \n' % iouv[j])
+                # print(Tp[i][j] / (Pred_t[i] + 1e-16))
+                # print('Recall at %2f \n' % iouv[j])
+                # print(Tp[i][j] / (GT_t[i] + 1e-16))
                 file.write('Precision at %2f ' % iouv[j])
                 file.write(str(Tp[i][j] / (Pred_t[i] + 1e-16)) + '\n')
                 file.write('Recall at %2f ' % iouv[j])
