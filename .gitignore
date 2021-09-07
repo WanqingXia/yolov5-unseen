@@ -11,6 +11,7 @@ attributes.xlsx
 .github/*
 .gitattributes
 
+
 # Repo-specific GitIgnore ----------------------------------------------------------------------------------------------
 *.jpg
 *.jpeg
@@ -57,7 +58,6 @@ VOC/
 
 # Neural Network weights -----------------------------------------------------------------------------------------------
 *.weights
-*.pt
 *.onnx
 *.mlmodel
 *.torchscript
