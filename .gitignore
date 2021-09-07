@@ -1,16 +1,5 @@
-list.ods
-models/hub/*
 some_result.txt
-tutorial.ipynb
-yolov5-master.zip
-CONTRIBUTING.md
-Dockerfile
-LICENSE
 PR_result.txt
-attributes.xlsx
-.github/*
-.gitattributes
-
 
 # Repo-specific GitIgnore ----------------------------------------------------------------------------------------------
 *.jpg
@@ -34,7 +23,6 @@ attributes.xlsx
 *.data
 *.json
 *.cfg
-!cfg/yolov3*.cfg
 
 storage.googleapis.com
 runs/*
@@ -46,23 +34,11 @@ data/*
 
 results*.csv
 
-# Datasets -------------------------------------------------------------------------------------------------------------
-coco/
-coco128/
-VOC/
-
-# MATLAB GitIgnore -----------------------------------------------------------------------------------------------------
-*.m~
-*.mat
-!targets*.mat
-
 # Neural Network weights -----------------------------------------------------------------------------------------------
 *.weights
 *.onnx
 *.mlmodel
 *.torchscript
-darknet53.conv.74
-yolov3-tiny.conv.15
 
 # GitHub Python GitIgnore ----------------------------------------------------------------------------------------------
 # Byte-compiled / optimized / DLL files

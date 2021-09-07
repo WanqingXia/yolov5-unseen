@@ -5,8 +5,6 @@ Usage:
 """
 
 import argparse
-import json
-import os
 import sys
 from pathlib import Path
 from threading import Thread
@@ -20,34 +18,12 @@ sys.path.append(FILE.parents[0].as_posix())  # add yolov5/ to path
 
 from models.experimental import attempt_load
 from utils.datasets import create_dataloader
-from utils.general import coco80_to_coco91_class, check_dataset, check_file, check_img_size, check_requirements, \
-    box_iou, non_max_suppression, scale_coords, xyxy2xywh, xywh2xyxy, set_logging, increment_path, colorstr
+from utils.general import check_dataset, check_file, check_img_size, check_requirements, \
+    box_iou, non_max_suppression, scale_coords, xywh2xyxy, set_logging, increment_path, colorstr
 from utils.metrics import ap_per_class, ConfusionMatrix
-from utils.plots import plot_images, output_to_target, plot_study_txt
+from utils.plots import plot_images, output_to_target
 from utils.torch_utils import select_device, time_sync
 from utils.callbacks import Callbacks
-
-
-def save_one_txt(predn, save_conf, shape, file):
-    # Save one txt result
-    gn = torch.tensor(shape)[[1, 0, 1, 0]]  # normalization gain whwh
-    for *xyxy, conf, cls in predn.tolist():
-        xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-        line = (cls, *xywh, conf) if save_conf else (cls, *xywh)  # label format
-        with open(file, 'a') as f:
-            f.write(('%g ' * len(line)).rstrip() % line + '\n')
-
-
-def save_one_json(predn, jdict, path, class_map):
-    # Save one JSON result {"image_id": 42, "category_id": 18, "bbox": [258.15, 41.29, 348.26, 243.78], "score": 0.236}
-    image_id = int(path.stem) if path.stem.isnumeric() else path.stem
-    box = xyxy2xywh(predn[:, :4])  # xywh
-    box[:, :2] -= box[:, 2:] / 2  # xy center to top-left corner
-    for p, b in zip(predn.tolist(), box.tolist()):
-        jdict.append({'image_id': image_id,
-                      'category_id': class_map[int(p[5])],
-                      'bbox': [round(x, 3) for x in b],
-                      'score': round(p[4], 5)})
 
 
 def process_batch(detections, labels, iouv):
@@ -67,7 +43,6 @@ def process_batch(detections, labels, iouv):
         if x[0].shape[0] > 1:
             matches = matches[matches[:, 2].argsort()[::-1]]
             matches = matches[np.unique(matches[:, 1], return_index=True)[1]]
-            # matches = matches[matches[:, 2].argsort()[::-1]]
             matches = matches[np.unique(matches[:, 0], return_index=True)[1]]
         matches = torch.Tensor(matches).to(iouv.device)
         correct[matches[:, 1].long()] = matches[:, 2:3] >= iouv
@@ -138,10 +113,6 @@ def run(data,
         gs = max(int(model.stride.max()), 32)  # grid size (max stride)
         imgsz = check_img_size(imgsz, s=gs)  # check image size
 
-        # Multi-GPU disabled, incompatible with .half() https://github.com/ultralytics/yolov5/issues/99
-        # if device.type != 'cpu' and torch.cuda.device_count() > 1:
-        #     model = nn.DataParallel(model)
-
         # Data
         data = check_dataset(data)  # check
 
@@ -152,8 +123,7 @@ def run(data,
 
     # Configure
     model.eval()
-    is_coco = type(data['val']) is str and data['val'].endswith('coco/val2017.txt')  # COCO dataset
-    nc = 1 if single_cls else int(data['nc'])  # number of classes
+    nc =  int(data['nc'])  # number of classes
     iouv = torch.linspace(0.5, 0.9, 5).to(device)  # iou vector for mAP@0.5:0.95
     niou = iouv.numel()
 
@@ -162,13 +132,12 @@ def run(data,
         if device.type != 'cpu':
             model(torch.zeros(1, 3, imgsz, imgsz).to(device).type_as(next(model.parameters())))  # run once
         task = task if task in ('train', 'val', 'test') else 'val'  # path to train/val/test images
-        dataloader = create_dataloader(data[task], imgsz, batch_size, gs, single_cls,sample_num = 0, pad=0.5, rect=True,
+        dataloader = create_dataloader(data[task], imgsz, batch_size, gs, single_cls,sample_num = 320, pad=0.5, rect=True,
                                        prefix=colorstr(f'{task}: '))[0]
 
     seen = 0
     confusion_matrix = ConfusionMatrix(nc=nc)
     names = {k: v for k, v in enumerate(model.names if hasattr(model, 'names') else model.module.names)}
-    class_map = coco80_to_coco91_class() if is_coco else list(range(1000))
     s = ('%20s' + '%11s' * 6) % ('Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95')
     p, r, f1, mp, mr, map50, map, t0, t1, t2 = 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.
     loss = torch.zeros(3, device=device)
@@ -234,11 +203,6 @@ def run(data,
                 correct = torch.zeros(pred.shape[0], niou, dtype=torch.bool)
             stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), tcls))  # (correct, conf, pcls, tcls)
 
-            # Save/log
-            if save_txt:
-                save_one_txt(predn, save_conf, shape, file=save_dir / 'labels' / (path.stem + '.txt'))
-            if save_json:
-                save_one_json(predn, jdict, path, class_map)  # append to COCO-JSON dictionary
             callbacks.on_val_image_end(pred, predn, path, names, img[si])
 
         # Plot images
@@ -261,25 +225,20 @@ def run(data,
     # Print results
     pf = '%20s' + '%11i' * 2 + '%11.3g' * 4  # print format
     print(pf % ('all', seen, nt.sum(), mp, mr, map50, map))
-    with open('some_result.txt',"w") as f:
-        f.write(str(Tp))
-        f.write('\n')
-        f.write(str(Pred_t))
-        f.write('\n')
-        f.write(str(GT_t))
-    with open('PR_result.txt', "w") as file:
-        for i in range(nc):
-            # print('class: %2s \n' % i)
-            file.write('class: %2s \n' % i)
-            for j in range(len(iouv)):
-                # print('Precision at %2f \n' % iouv[j])
-                # print(Tp[i][j] / (Pred_t[i] + 1e-16))
-                # print('Recall at %2f \n' % iouv[j])
-                # print(Tp[i][j] / (GT_t[i] + 1e-16))
-                file.write('Precision at %2f ' % iouv[j])
-                file.write(str(Tp[i][j] / (Pred_t[i] + 1e-16)) + '\n')
-                file.write('Recall at %2f ' % iouv[j])
-                file.write(str(Tp[i][j] / (GT_t[i] + 1e-16)) + '\n')
+    # with open('some_result.txt',"w") as f:
+    #     f.write(str(Tp))
+    #     f.write('\n')
+    #     f.write(str(Pred_t))
+    #     f.write('\n')
+    #     f.write(str(GT_t))
+    # with open('PR_result.txt', "w") as file:
+    #     for i in range(nc):
+    #         file.write('class: %2s \n' % i)
+    #         for j in range(len(iouv)):
+    #             file.write('Precision at %2f ' % iouv[j])
+    #             file.write(str(Tp[i][j] / (Pred_t[i] + 1e-16)) + '\n')
+    #             file.write('Recall at %2f ' % iouv[j])
+    #             file.write(str(Tp[i][j] / (GT_t[i] + 1e-16)) + '\n')
 
     # Print results per class
     if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
@@ -310,8 +269,8 @@ def run(data,
 
 def parse_opt():
     parser = argparse.ArgumentParser(prog='val.py')
-    parser.add_argument('--data', type=str, default='data/ycb_unseen.yaml', help='dataset.yaml path')
-    parser.add_argument('--weights', nargs='+', type=str, default='runs/train/5s-30epochs/weights/best.pt', help='model.pt path(s)')
+    parser.add_argument('--data', type=str, default='ycb_unseen.yaml', help='dataset.yaml path')
+    parser.add_argument('--weights', nargs='+', type=str, default='runs/train/exp/weights/best.pt', help='model.pt path(s)')
     parser.add_argument('--batch-size', type=int, default=16, help='batch size')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.5, help='confidence threshold')
@@ -343,26 +302,6 @@ def main(opt):
 
     if opt.task in ('train', 'val', 'test'):  # run normally
         run(**vars(opt))
-
-    elif opt.task == 'speed':  # speed benchmarks
-        for w in opt.weights if isinstance(opt.weights, list) else [opt.weights]:
-            run(opt.data, weights=w, batch_size=opt.batch_size, imgsz=opt.imgsz, conf_thres=.25, iou_thres=.45,
-                save_json=False, plots=False)
-
-    elif opt.task == 'study':  # run over a range of settings and save/plot
-        # python val.py --task study --data coco.yaml --iou 0.7 --weights yolov5s.pt yolov5m.pt yolov5l.pt yolov5x.pt
-        x = list(range(256, 1536 + 128, 128))  # x axis (image sizes)
-        for w in opt.weights if isinstance(opt.weights, list) else [opt.weights]:
-            f = f'study_{Path(opt.data).stem}_{Path(w).stem}.txt'  # filename to save to
-            y = []  # y axis
-            for i in x:  # img-size
-                print(f'\nRunning {f} point {i}...')
-                r, _, t = run(opt.data, weights=w, batch_size=opt.batch_size, imgsz=i, conf_thres=opt.conf_thres,
-                              iou_thres=opt.iou_thres, save_json=opt.save_json, plots=False)
-                y.append(r + t)  # results and times
-            np.savetxt(f, y, fmt='%10.4g')  # save
-        os.system('zip -r study.zip study_*.txt')
-        plot_study_txt(x=x)  # plot
 
 
 if __name__ == "__main__":
