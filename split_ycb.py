@@ -30,11 +30,9 @@ val_path = os.path.join(save_file_root, "val")
 # Concatenate the path for saving all the data (images, depth, labels)
 train_images_path = os.path.join(train_path, "images")
 train_label_path = os.path.join(train_path, "labels")
-train_attr_path = os.path.join(train_path, "labels_attr")
 train_depth_path = os.path.join(train_path, "depth")
 val_image_path = os.path.join(val_path, "images")
 val_label_path = os.path.join(val_path, "labels")
-val_attr_path = os.path.join(train_path, "labels_attr")
 val_depth_path = os.path.join(val_path, "depth")
 
 # make all the directories
@@ -50,10 +48,6 @@ if os.path.exists(save_file_root) is False:
     os.makedirs(val_image_path)
     os.makedirs(val_label_path)
     os.makedirs(val_depth_path)
-
-    os.makedirs(train_attr_path)
-    os.makedirs(val_attr_path)
-
 """
 6 mustard bottle [4]
 9 gelatin box [7]
@@ -141,6 +135,13 @@ def translate_info(classes_file, train_val):
     # read class file
     class_dict = open(classes_file, 'r').readlines()
     # write to different files for train dataset and val dataset
+    with open("attributes.csv","r") as file:
+        csv_file = csv.reader(file)
+        header = next(csv_file)
+        attribute_matrix = []
+        for row in csv_file:
+           attribute_matrix.append(row[1:])
+
     if train_val == "train":
         dict_ini = open(os.path.join(save_file_root, "train_split.txt"), 'r').readlines()
         txt_save_path = train_label_path
@@ -191,7 +192,11 @@ def translate_info(classes_file, train_val):
                 h = round(h / img_height, 6)
                 info = [str(num) for num in [index_num, xcenter, ycenter, w, h]]
 
-                f.write(" ".join(info) + '\n')
+                attr= [str(num) for num in attribute_matrix[index_num]]
+                joined_str = " ".join(attr)
+
+                f.write(" ".join(info))
+                f.write(" " + joined_str + '\n')
         # Check if there are empty txt file created
         if os.stat(txt_save_name).st_size is 0:
             print("\n file {} is empty".format(txt_save_name))
@@ -213,33 +218,6 @@ def create_data_data(classes_file):
     data_data.write("valid=" + save_file_root + "/val_data.txt\n")
     data_data.write("names=" + save_file_root + "/my_classes.names\n")
 
-def create_attributes():
-    with open("attributes.csv","r") as file:
-        csv_file = csv.reader(file)
-        header = next(csv_file)
-        attribute_matrix = []
-        for row in csv_file:
-           attribute_matrix.append(row[1:])
-    for filename in tqdm(os.listdir(train_label_path), desc="Creating train labels with attributes"):
-        with open(os.path.join(train_label_path,filename), "r") as f:
-            content= f.readlines()
-        with open(os.path.join(train_attr_path, filename), "w") as w:
-            for line in content:
-                w.write(line.strip('\n'))
-                class_num = int(line.split(' ')[0])
-                attr= [str(num) for num in attribute_matrix[class_num]]
-                joined_str = " ".join(attr)
-                w.write(' ' + joined_str + '\n')
-    for filename in tqdm(os.listdir(val_label_path), desc="Creating val labels with attributes"):
-        with open(os.path.join(val_label_path,filename), "r") as f:
-            content= f.readlines()
-        with open(os.path.join(val_attr_path, filename), "w") as w:
-            for line in content:
-                w.write(line.strip('\n'))
-                class_num = int(line.split(' ')[0])
-                attr= [str(num) for num in attribute_matrix[class_num]]
-                joined_str = " ".join(attr)
-                w.write(' ' + joined_str + '\n')
 def main():
     # read classes from classes.txt and translate to my_classes
     classes = open(class_root, 'r').readlines()
@@ -264,10 +242,6 @@ def main():
 
     # create data.data file
     create_data_data(new_class_dict)
-
-    # create_attributes()
-
-
 
 if __name__ == '__main__':
     main()
