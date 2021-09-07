@@ -8,7 +8,6 @@ import random
 import csv
 
 from tqdm import tqdm
-from lxml import etree
 import json
 import shutil
 
@@ -253,20 +252,20 @@ def main():
             new_class.write("{}".format(line.strip()[4:]) + "\n")
     new_class.close()
 
-    # choose_files(new_class_dict)
+    choose_files(new_class_dict)
 
-    # # Translate YCB labelling to yolo labelling
-    # translate_info(new_class_dict, "train")
-    # translate_info(new_class_dict, "val")
-    #
-    # # Copy image and depth file to the new directory
-    # copy_files("train")
-    # copy_files("val")
-    #
-    # # create data.data file
-    # create_data_data(new_class_dict)
+    # Translate YCB labelling to yolo labelling
+    translate_info(new_class_dict, "train")
+    translate_info(new_class_dict, "val")
 
-    create_attributes()
+    # Copy image and depth file to the new directory
+    copy_files("train")
+    copy_files("val")
+
+    # create data.data file
+    create_data_data(new_class_dict)
+
+    # create_attributes()
 
 
 
