@@ -374,8 +374,9 @@ def labels_to_class_weights(labels, nc=80):
     # Prepend gridpoint count (for uCE training)
     # gpi = ((320 / 32 * np.array([1, 2, 4])) ** 2 * 3).sum()  # gridpoints per image
     # weights = np.hstack([gpi * len(labels)  - weights.sum() * 9, weights * 9]) ** 0.5  # prepend gridpoints to start
-
-    weights[weights == 0] = 1  # replace empty bins with 1
+    # weights[weights==0] = 1  # replace empty bins with 1
+    # change all weights to
+    weights[:] = 1  # replace empty bins with 1
     weights = 1 / weights  # number of targets per class
     weights /= weights.sum()  # normalize
     return torch.from_numpy(weights)

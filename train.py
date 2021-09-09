@@ -189,7 +189,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     # Trainloader
     random_number = 10000 # number of random images picked and used in training
     train_loader, dataset = create_dataloader(train_path, imgsz, batch_size // WORLD_SIZE, gs, single_cls, random_number,
-                                              hyp=hyp, augment=True, cache=opt.cache, rect=opt.rect, rank=RANK,
+                                              hyp=hyp, augment=False, cache=opt.cache, rect=opt.rect, rank=RANK,
                                               workers=workers, image_weights=opt.image_weights, quad=opt.quad,
                                               prefix=colorstr('train: '))
     mlc = int(np.concatenate(dataset.labels, 0)[:, 0].max())  # max label class
@@ -205,9 +205,9 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                                        prefix=colorstr('val: '))[0]
 
         if not resume:
-            labels = np.concatenate(dataset.labels, 0)
-            if plots:
-                plot_labels(labels, names, save_dir)
+        #     labels = np.concatenate(dataset.labels, 0)
+        #     if plots:
+        #         plot_labels(labels, names, save_dir)
 
             # Anchors
             if not opt.noautoanchor:
@@ -245,6 +245,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                 f'Logging results to {save_dir}\n'
                 f'Starting training for {epochs} epochs...')
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
+        # set the model to training mode
         model.train()
 
         mloss = torch.zeros(3, device=device)  # mean losses

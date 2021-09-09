@@ -113,7 +113,7 @@ def create_dataloader(path, imgsz, batch_size, stride, single_cls=False, sample_
     if sample_num == 0:
         sampler = None
     else:
-        sampler = torch.utils.data.distributed.DistributedSampler(dataset) if rank != -1 else random_samples
+        sampler = random_samples
     loader = torch.utils.data.DataLoader if image_weights else InfiniteDataLoader
     # Use torch.utils.data.DataLoader() if dataset.properties will update during training else InfiniteDataLoader()
     dataloader = loader(dataset,
@@ -594,7 +594,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
         labels_out = torch.zeros((nl, 6))
         if nl:
-            labels_out[:, 1:] = torch.from_numpy(labels)
+            labels_out[:, 1:] = torch.from_numpy(labels[:, :5])
 
         # Convert
         img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
@@ -886,11 +886,13 @@ def verify_image_label(args):
                 l = [x.split() for x in f.read().strip().splitlines() if len(x)]
                 if any([len(x) > 8 for x in l]):  # is segment
                     classes = np.array([x[0] for x in l], dtype=np.float32)
-                    segments = [np.array(x[1:], dtype=np.float32).reshape(-1, 2) for x in l]  # (cls, xy1...)
-                    l = np.concatenate((classes.reshape(-1, 1), segments2boxes(segments)), 1)  # (cls, xywh)
+                    segments = [np.array(x[1:5], dtype=np.float32).reshape(-1, 2) for x in l]  # (cls, xy1...)
+                    attributes = np.array([x[5:] for x in l], dtype=np.float32)
+                    what3 = 1
+                    l = np.concatenate((classes.reshape(-1, 1), segments2boxes(segments), attributes), 1)  # (cls, xywh)
                 l = np.array(l, dtype=np.float32)
             if len(l):
-                assert l.shape[1] == 5, 'labels require 5 columns each'
+                assert l.shape[1] == 21, 'labels require 21 columns each'
                 assert (l >= 0).all(), 'negative labels'
                 assert (l[:, 1:] <= 1).all(), 'non-normalized or out of bounds coordinate labels'
                 assert np.unique(l, axis=0).shape[0] == l.shape[0], 'duplicate labels'
