@@ -113,6 +113,16 @@ def kmean_anchors(dataset='./data/coco128.yaml', n=9, img_size=640, thr=4.0, gen
     shapes = img_size * dataset.shapes / dataset.shapes.max(1, keepdims=True)
     wh0 = np.concatenate([l[:, 3:5] * s for s, l in zip(shapes, dataset.labels)])  # wh
 
+    list1 = []
+    for i in range(shapes.shape[0]):
+        for l in dataset.labels[i]:
+            size1 = l[3] * 640
+            size2 = l[3] * 480
+            if size1 < 3 or size2 < 3:
+                list1.append(i)
+    ls= []
+    for i, j in enumerate(list1):
+        ls.append(dataset.label_files[j])
     # Filter
     i = (wh0 < 3.0).any(1).sum()
     if i:

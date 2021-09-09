@@ -362,14 +362,14 @@ def colorstr(*input):
     return ''.join(colors[x] for x in args) + f'{string}' + colors['end']
 
 
-def labels_to_class_weights(labels, nc=80):
+def labels_to_class_weights(labels, n_attr=16):
     # Get class weights (inverse frequency) from training labels
     if labels[0] is None:  # no labels loaded
         return torch.Tensor()
 
     labels = np.concatenate(labels, 0)  # labels.shape = (866643, 5) for COCO
     classes = labels[:, 0].astype(np.int)  # labels = [class xywh]
-    weights = np.bincount(classes, minlength=nc)  # occurrences per class
+    weights = np.bincount(classes, minlength=n_attr)  # occurrences per class
 
     # Prepend gridpoint count (for uCE training)
     # gpi = ((320 / 32 * np.array([1, 2, 4])) ** 2 * 3).sum()  # gridpoints per image

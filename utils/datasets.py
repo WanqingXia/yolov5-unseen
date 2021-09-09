@@ -886,10 +886,11 @@ def verify_image_label(args):
                 l = [x.split() for x in f.read().strip().splitlines() if len(x)]
                 if any([len(x) > 8 for x in l]):  # is segment
                     classes = np.array([x[0] for x in l], dtype=np.float32)
-                    segments = [np.array(x[1:5], dtype=np.float32).reshape(-1, 2) for x in l]  # (cls, xy1...)
+                    segments = np.array([x[1:5] for x in l] ,dtype= np.float32)# (cls, xy1...)
+                    # segments = [np.array(x[1:5], dtype=np.float32).reshape(-1, 2) for x in l]  # (cls, xy1...)
                     attributes = np.array([x[5:] for x in l], dtype=np.float32)
-                    what3 = 1
-                    l = np.concatenate((classes.reshape(-1, 1), segments2boxes(segments), attributes), 1)  # (cls, xywh)
+                    l = np.concatenate((classes.reshape(-1, 1), segments, attributes), 1)  # (cls, xywh)
+                    # l = np.concatenate((classes.reshape(-1, 1), segments2boxes(segments), attributes), 1)  # (cls, xywh)
                 l = np.array(l, dtype=np.float32)
             if len(l):
                 assert l.shape[1] == 21, 'labels require 21 columns each'

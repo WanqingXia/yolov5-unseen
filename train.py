@@ -91,9 +91,10 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     with torch_distributed_zero_first(RANK):
         data_dict = data_dict or check_dataset(data)  # check if None
     train_path, val_path = data_dict['train'], data_dict['val']
-    nc = int(data_dict['nc'])  # number of classes
+    # nc = int(data_dict['nc'])  # number of classes
+    n_attr = int(data_dict['n_attr'])
     names = data_dict['names']  # class names
-    assert len(names) == nc, f'{len(names)} names found for nc={nc} dataset in {data}'  # check
+    # assert len(names) == nc, f'{len(names)} names found for nc={nc} dataset in {data}'  # check
 
     # Model
     # pretrained = weights.endswith('.pt')
@@ -111,7 +112,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     #     model = Model(cfg, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
 
     # create model with out pretrained weights
-    model = Model(cfg, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)
+    model = Model(cfg, ch=3, n_attr=n_attr, anchors=hyp.get('anchors')).to(device)
 
     # Freeze
     # freeze = [f'model.{x}.' for x in range(freeze)]  # layers to freeze
@@ -192,9 +193,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                                               hyp=hyp, augment=False, cache=opt.cache, rect=opt.rect, rank=RANK,
                                               workers=workers, image_weights=opt.image_weights, quad=opt.quad,
                                               prefix=colorstr('train: '))
-    mlc = int(np.concatenate(dataset.labels, 0)[:, 0].max())  # max label class
     nb = len(train_loader)  # number of batches
-    assert mlc < nc, f'Label class {mlc} exceeds nc={nc} in {data}. Possible class labels are 0-{nc - 1}'
 
     # Process 0
     if RANK in [-1, 0]:
@@ -222,12 +221,12 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
 
     # Model parameters
     hyp['box'] *= 3. / nl  # scale to layers
-    hyp['cls'] *= nc / 80. * 3. / nl  # scale to classes and layers
+    hyp['cls'] *= n_attr / 80. * 3. / nl  # scale to classes and layers
     hyp['obj'] *= (imgsz / 640) ** 2 * 3. / nl  # scale to image size and layers
     hyp['label_smoothing'] = opt.label_smoothing
-    model.nc = nc  # attach number of classes to model
+    model.n_attr = n_attr  # attach number of classes to model
     model.hyp = hyp  # attach hyperparameters to model
-    model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device) * nc  # attach class weights
+    model.class_weights = labels_to_class_weights(dataset.labels, n_attr).to(device) * n_attr  # attach class weights
     model.names = names
 
     # Start training
@@ -235,7 +234,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     nw = max(round(hyp['warmup_epochs'] * nb), 1000)  # number of warmup iterations, max(3 epochs, 1k iterations)
     # nw = min(nw, (epochs - start_epoch) / 2 * nb)  # limit warmup to < 1/2 of training
     last_opt_step = -1
-    maps = np.zeros(nc)  # mAP per class
+    maps = np.zeros(n_attr)  # mAP per class
     results = (0, 0, 0, 0, 0, 0, 0)  # P, R, mAP@.5, mAP@.5-.95, val_loss(box, obj, cls)
     scheduler.last_epoch = start_epoch - 1  # do not move
     scaler = amp.GradScaler(enabled=cuda)
@@ -316,7 +315,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                                            dataloader=val_loader,
                                            save_dir=save_dir,
                                            save_json= False,
-                                           verbose=nc < 50 and final_epoch,
+                                           verbose=n_attr < 50 and final_epoch,
                                            plots=plots and final_epoch,
                                            callbacks=callbacks,
                                            compute_loss=compute_loss)
