@@ -163,7 +163,7 @@ def plot_images(images, targets, paths=None, fname='images.jpg', names=None, max
             image_targets = targets[targets[:, 0] == i]
             boxes = xywh2xyxy(image_targets[:, 2:6]).T
             classes = image_targets[:, 1].astype('int')
-            labels = image_targets.shape[1] == 6  # labels if no conf column
+            labels = image_targets.shape[1] == 22  # labels if no conf column changed from 6 to 22 since extra 16 data
             conf = None if labels else image_targets[:, 6]  # check for confidence presence (label vs pred)
 
             if boxes.shape[1]:
@@ -174,6 +174,7 @@ def plot_images(images, targets, paths=None, fname='images.jpg', names=None, max
                     boxes *= scale_factor
             boxes[[0, 2]] += block_x
             boxes[[1, 3]] += block_y
+
             for j, box in enumerate(boxes.T):
                 cls = int(classes[j])
                 color = colors(cls)

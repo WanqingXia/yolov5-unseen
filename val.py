@@ -6,6 +6,7 @@ Usage:
 
 import argparse
 import sys
+import csv
 from pathlib import Path
 from threading import Thread
 
@@ -24,7 +25,7 @@ from utils.metrics import ap_per_class, ConfusionMatrix
 from utils.plots import plot_images, output_to_target
 from utils.torch_utils import select_device, time_sync
 from utils.callbacks import Callbacks
-
+from utils.general import cosine_similarity
 
 def process_batch(detections, labels, iouv):
     """
@@ -66,7 +67,7 @@ def accumalate_img(predn, labelsn, iouv, Tp):
             for j in range(len(index)):
                 label_index = index[j]
                 class_index = int(labelsn[label_index][0])
-                Tp[class_index][i] += 1
+                # Tp[class_index][i] += 1
 
 
 @torch.no_grad()
@@ -123,8 +124,8 @@ def run(data,
 
     # Configure
     model.eval()
-    nc =  int(data['nc'])  # number of classes
-    iouv = torch.linspace(0.5, 0.9, 5).to(device)  # iou vector for mAP@0.5:0.95
+    nc = int(data['nc'])  # number of classes
+    iouv = torch.linspace(0.5, 0.95, 10).to(device)  # iou vector for mAP@0.5:0.95
     niou = iouv.numel()
 
     # Dataloader
@@ -132,17 +133,28 @@ def run(data,
         if device.type != 'cpu':
             model(torch.zeros(1, 3, imgsz, imgsz).to(device).type_as(next(model.parameters())))  # run once
         task = task if task in ('train', 'val', 'test') else 'val'  # path to train/val/test images
-        dataloader = create_dataloader(data[task], imgsz, batch_size, gs, single_cls,sample_num = 320, pad=0.5, rect=True,
+        dataloader = create_dataloader(data[task], imgsz, batch_size, gs, single_cls,sample_num = 0, pad=0.5, rect=True,
                                        prefix=colorstr(f'{task}: '))[0]
 
     seen = 0
-    confusion_matrix = ConfusionMatrix(nc=nc)
-    names = {k: v for k, v in enumerate(model.names if hasattr(model, 'names') else model.module.names)}
+    # confusion_matrix = ConfusionMatrix(nc=nc)
+    # names = {k: v for k, v in enumerate(model.names if hasattr(model, 'names') else model.module.names)}
+    # names = str(np.linspace(0,20,21))
+    names = {k: str(v) for k, v in enumerate(range(0, 21))}
     s = ('%20s' + '%11s' * 6) % ('Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95')
     p, r, f1, mp, mr, map50, map, t0, t1, t2 = 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.
     loss = torch.zeros(3, device=device)
     jdict, stats, ap, ap_class = [], [], [], []
     Tp, Pred_t, GT_t = np.zeros((21,5)), np.zeros(21), np.zeros(21)
+
+    with open("attributes.csv","r") as file:
+        csv_file = csv.reader(file)
+        header = next(csv_file)
+        attribute_matrix = []
+        for row in csv_file:
+           attribute_matrix.append(row[1:])
+    attribute_matrix = np.array(attribute_matrix)
+
     for batch_i, (img, targets, paths, shapes) in enumerate(tqdm(dataloader, desc=s)):
         t_ = time_sync()
         img = img.to(device, non_blocking=True)
@@ -162,10 +174,10 @@ def run(data,
             loss += compute_loss([x.float() for x in train_out], targets)[1]  # box, obj, cls
 
         # Run NMS
-        targets[:, 2:] *= torch.Tensor([width, height, width, height]).to(device)  # to pixels
+        targets[:, 2:6] *= torch.Tensor([width, height, width, height]).to(device)  # to pixels
         lb = [targets[targets[:, 0] == i, 1:] for i in range(nb)] if save_hybrid else []  # for autolabelling
         t = time_sync()
-        out = non_max_suppression(out, conf_thres, iou_thres, labels=lb, multi_label=True, agnostic=single_cls)
+        out = non_max_suppression(out, attribute_matrix, conf_thres, iou_thres, labels=lb, multi_label=True, agnostic=single_cls)
         t2 += time_sync() - t
 
         # Statistics per image
@@ -194,11 +206,12 @@ def run(data,
                 scale_coords(img[si].shape[1:], tbox, shape, shapes[si][1])  # native-space labels
                 labelsn = torch.cat((labels[:, 0:1], tbox), 1)  # native-space labels
                 correct = process_batch(predn, labelsn, iouv)
-                for x in range(predn.shape[0]):
-                    Pred_t[int(predn[x][5])] += 1
-                accumalate_img(predn, labelsn, iouv, Tp)
-                if plots:
-                    confusion_matrix.process_batch(predn, labelsn)
+                # for x in range(predn.shape[0]):
+                #     Pred_t[int(predn[x][5])] += 1
+                # accumalate_img(predn, labelsn, iouv, Tp)
+
+                # if plots:
+                    # confusion_matrix.process_batch(predn, labelsn)
             else:
                 correct = torch.zeros(pred.shape[0], niou, dtype=torch.bool)
             stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), tcls))  # (correct, conf, pcls, tcls)
@@ -253,7 +266,7 @@ def run(data,
 
     # Plots
     if plots:
-        confusion_matrix.plot(save_dir=save_dir, names=list(names.values()))
+        # confusion_matrix.plot(save_dir=save_dir, names=list(names.values()))
         callbacks.on_val_end()
 
     # Return results
@@ -270,7 +283,7 @@ def run(data,
 def parse_opt():
     parser = argparse.ArgumentParser(prog='val.py')
     parser.add_argument('--data', type=str, default='ycb_unseen.yaml', help='dataset.yaml path')
-    parser.add_argument('--weights', nargs='+', type=str, default='runs/train/exp/weights/best.pt', help='model.pt path(s)')
+    parser.add_argument('--weights', nargs='+', type=str, default='./runs/train/trial6/weights/last.pt', help='model.pt path(s)')
     parser.add_argument('--batch-size', type=int, default=16, help='batch size')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.5, help='confidence threshold')

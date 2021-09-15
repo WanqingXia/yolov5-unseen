@@ -505,18 +505,27 @@ def clip_coords(boxes, shape):
         boxes[:, [0, 2]] = boxes[:, [0, 2]].clip(0, shape[1])  # x1, x2
         boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, shape[0])  # y1, y2
 
+def convert_class(pred, attributes, device):
+    out = torch.zeros([pred.shape[0], attributes.shape[0]+5], device=device)
+    out[:,0:5] = torch.clone(pred[:,0:5])
+    for i in range(pred.shape[0]):
+        attr_out = np.array(pred[i, 5:].cpu())
+        for j in range(attributes.shape[0]):
+            out[i,j+5] = cosine_similarity(attr_out, attributes[j])
+    return out
 
-def non_max_suppression(prediction, conf_thres=0.25, iou_thres=0.45, classes=None, agnostic=False, multi_label=False,
-                        labels=(), max_det=300):
+def non_max_suppression(prediction, attribute_matrix, conf_thres=0.25, iou_thres=0.45, classes=None, agnostic=False, multi_label=False,
+                        labels=(), max_det=300, ):
     """Runs Non-Maximum Suppression (NMS) on inference results
 
     Returns:
          list of detections, on (n,6) tensor per image [xyxy, conf, cls]
     """
-
-    nc = prediction.shape[2] - 5  # number of classes
+    # [0-3]x,y,w,h, [4]confidence [5-21]attributes
+    # nc = prediction.shape[2] - 5  # number of classes
+    nc = 21 # hard coded nc
     xc = prediction[..., 4] > conf_thres  # candidates
-
+    some = prediction.cpu().detach().numpy()
     # Checks
     assert 0 <= conf_thres <= 1, f'Invalid Confidence threshold {conf_thres}, valid values are between 0.0 and 1.0'
     assert 0 <= iou_thres <= 1, f'Invalid IoU {iou_thres}, valid values are between 0.0 and 1.0'
@@ -548,9 +557,9 @@ def non_max_suppression(prediction, conf_thres=0.25, iou_thres=0.45, classes=Non
         # If none remain process next image
         if not x.shape[0]:
             continue
-
+        x = convert_class(x, attribute_matrix, x.device)
         # Compute conf
-        x[:, 5:] *= x[:, 4:5]  # conf = obj_conf * cls_conf
+        # x[:, 5:] *= x[:, 4:5]  # conf = obj_conf * cls_conf
 
         # Box (center x, center y, width, height) to (x1, y1, x2, y2)
         box = xywh2xyxy(x[:, :4])
@@ -720,3 +729,9 @@ def increment_path(path, exist_ok=False, sep='', mkdir=False):
     if not dir.exists() and mkdir:
         dir.mkdir(parents=True, exist_ok=True)  # make directory
     return path
+
+def cosine_similarity(vp, vt):
+    vp = vp.astype(float)
+    vt = vt.astype(float)
+    cos_sim = np.dot(vp, vt) / (np.linalg.norm(vp) * np.linalg.norm(vt))
+    return cos_sim
