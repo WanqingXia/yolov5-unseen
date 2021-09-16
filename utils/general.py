@@ -525,7 +525,7 @@ def non_max_suppression(prediction, attribute_matrix, conf_thres=0.25, iou_thres
     # nc = prediction.shape[2] - 5  # number of classes
     nc = 21 # hard coded nc
     xc = prediction[..., 4] > conf_thres  # candidates
-    some = prediction.cpu().detach().numpy()
+    some = prediction[..., 4].cpu().detach().numpy()
     # Checks
     assert 0 <= conf_thres <= 1, f'Invalid Confidence threshold {conf_thres}, valid values are between 0.0 and 1.0'
     assert 0 <= iou_thres <= 1, f'Invalid IoU {iou_thres}, valid values are between 0.0 and 1.0'
@@ -544,15 +544,15 @@ def non_max_suppression(prediction, attribute_matrix, conf_thres=0.25, iou_thres
         # Apply constraints
         # x[((x[..., 2:4] < min_wh) | (x[..., 2:4] > max_wh)).any(1), 4] = 0  # width-height
         x = x[xc[xi]]  # confidence
-
+        filtered = x.cpu().detach().numpy()
         # Cat apriori labels if autolabelling
-        if labels and len(labels[xi]):
-            l = labels[xi]
-            v = torch.zeros((len(l), nc + 5), device=x.device)
-            v[:, :4] = l[:, 1:5]  # box
-            v[:, 4] = 1.0  # conf
-            v[range(len(l)), l[:, 0].long() + 5] = 1.0  # cls
-            x = torch.cat((x, v), 0)
+        # if labels and len(labels[xi]):
+        #     l = labels[xi]
+        #     v = torch.zeros((len(l), nc + 5), device=x.device)
+        #     v[:, :4] = l[:, 1:5]  # box
+        #     v[:, 4] = 1.0  # conf
+        #     v[range(len(l)), l[:, 0].long() + 5] = 1.0  # cls
+        #     x = torch.cat((x, v), 0)
 
         # If none remain process next image
         if not x.shape[0]:

@@ -177,7 +177,7 @@ def run(data,
         targets[:, 2:6] *= torch.Tensor([width, height, width, height]).to(device)  # to pixels
         lb = [targets[targets[:, 0] == i, 1:] for i in range(nb)] if save_hybrid else []  # for autolabelling
         t = time_sync()
-        out = non_max_suppression(out, attribute_matrix, conf_thres, iou_thres, labels=lb, multi_label=True, agnostic=single_cls)
+        out = non_max_suppression(out, attribute_matrix, conf_thres, iou_thres, labels=lb, multi_label=False, agnostic=single_cls)
         t2 += time_sync() - t
 
         # Statistics per image
@@ -283,7 +283,7 @@ def run(data,
 def parse_opt():
     parser = argparse.ArgumentParser(prog='val.py')
     parser.add_argument('--data', type=str, default='ycb_unseen.yaml', help='dataset.yaml path')
-    parser.add_argument('--weights', nargs='+', type=str, default='./runs/train/trial6/weights/last.pt', help='model.pt path(s)')
+    parser.add_argument('--weights', nargs='+', type=str, default='./runs/train/trial/weights/last.pt', help='model.pt path(s)')
     parser.add_argument('--batch-size', type=int, default=16, help='batch size')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.5, help='confidence threshold')

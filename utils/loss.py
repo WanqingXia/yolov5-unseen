@@ -97,9 +97,9 @@ class ComputeLoss:
 
         # Define criteria
         BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['cls_pw']], device=device), reduction='mean')
-        BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['obj_pw']], device=device), reduction='mean')
-        self.MSEatt = nn.MSELoss(reduction='sum')
-        self.MSEobj = nn.MSELoss(reduction='sum')
+        BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['obj_pw']], device=device))
+        self.MSEcls = nn.BCELoss(reduction='sum')
+        self.MSEobj = nn.BCELoss(reduction='sum')
 
         # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
         self.cp, self.cn = smooth_BCE(eps=h.get('label_smoothing', 0.0))  # positive, negative BCE targets
@@ -120,7 +120,7 @@ class ComputeLoss:
         device = targets.device
         lcls, lbox, lobj = torch.zeros(1, device=device), torch.zeros(1, device=device), torch.zeros(1, device=device)
         tcls, tbox, indices, anchors, tattr = self.build_targets(p, targets)  # targets
-
+        lcls2 = torch.zeros(1, device=device)
         # Losses
         for i, pi in enumerate(p):  # layer index, layer predictions
             b, a, gj, gi = indices[i]  # image, anchor, gridy, gridx
@@ -146,10 +146,10 @@ class ComputeLoss:
 
                 # Classification
                 if self.n_attr > 1:  # semantic loss
-                    # t = torch.full_like(ps[:, 5:], self.cn, device=device)  # targets
-                    # t[range(n), tcls[i]] = self.cp
                     t = tattr[i]
-                    lcls += self.BCEcls(ps[:, 5:], t)  # BCE
+                    some = ps[:, 5:].sigmoid()
+                    # lcls += self.BCEcls(ps[:, 5:].sigmoid(), t)  # BCE
+                    lcls += -(t*torch.log(some)+(1.0-t)*torch.log(1.0-some)).sum()
                     # sim_mat, one_mat = torch.zeros(t.shape[0], device=device), torch.ones(t.shape[0], device=device)
                     # for j in range(t.shape[0]):
                     #     p_array = ps[j,5:].cpu().detach().numpy()
@@ -162,7 +162,7 @@ class ComputeLoss:
                 #     [file.write('%11.5g ' * 4 % tuple(x) + '\n') for x in torch.cat((txy[i], twh[i]), 1)]
 
             # obji = self.BCEobj(pi[..., 4], tobj)
-            obji = self.BCEobj(pi[..., 4], tobj)
+            obji = -(tobj*torch.log(pi[..., 4].sigmoid())+(1.0-tobj)*torch.log(1.0-pi[..., 4].sigmoid())).sum()
             lobj += obji * self.balance[i]  # obj loss
             if self.autobalance:
                 self.balance[i] = self.balance[i] * 0.9999 + 0.0001 / obji.detach().item()
@@ -174,7 +174,7 @@ class ComputeLoss:
         lcls *= self.hyp['cls']
         bs = tobj.shape[0]  # batch size
 
-        return (lbox + lobj + lcls) * bs, torch.cat((lbox, lobj, lcls)).detach()
+        return (lbox + lobj +lcls) * bs, torch.cat((lbox, lobj, lcls)).detach()
 
     def build_targets(self, p, targets):
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
