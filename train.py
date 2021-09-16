@@ -201,7 +201,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
 
     # Process 0
     if RANK in [-1, 0]:
-        val_loader = create_dataloader(val_path, imgsz, batch_size // WORLD_SIZE * 2, gs, single_cls,
+        val_loader = create_dataloader(val_path, imgsz, batch_size // WORLD_SIZE * 2, gs, single_cls, sample_num=4800,
                                        hyp=hyp, cache=None if noval else opt.cache, rect=True, rank=-1,
                                        workers=workers, pad=0.5,
                                        prefix=colorstr('val: '))[0]
@@ -246,6 +246,9 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                 f'Using {train_loader.num_workers} dataloader workers\n'
                 f'Logging results to {save_dir}\n'
                 f'Starting training for {epochs} epochs...')
+    loss_file = open(opt.save_dir + "/losses.txt", 'w')
+    losses = []
+    losses2 = []
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
         # set the model to training mode
         model.train()
@@ -295,7 +298,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
             if RANK in [-1, 0]:
                 mloss = (mloss * i + loss_items) / (i + 1)  # update mean losses
                 mem = f'{torch.cuda.memory_reserved() / 1E9 if torch.cuda.is_available() else 0:.3g}G'  # (GB)
-                pbar.set_description(('%10s' * 2 + '%12.4g' * 5) % (
+                pbar.set_description(('%10s' * 2 + '%10.4g' * 5) % (
                     f'{epoch}/{epochs - 1}', mem, *mloss, targets.shape[0], imgs.shape[-1]))
                 callbacks.on_train_batch_end(ni, model, imgs, targets, paths, plots)
             # end batch ------------------------------------------------------------------------------------------------
@@ -304,63 +307,64 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
         lr = [x['lr'] for x in optimizer.param_groups]  # for loggers
         scheduler.step()
 
-        # if RANK in [-1, 0]:
-        #     # mAP
-        #     callbacks.on_train_epoch_end(epoch=epoch)
-        #     ema.update_attr(model, include=['yaml', 'n_attr', 'hyp', 'names', 'stride', 'class_weights'])
-        #     final_epoch = epoch + 1 == epochs
-        #     if not noval or final_epoch:  # Calculate mAP
-        #         results, maps, _ = val.run(data_dict,
-        #                                    batch_size=batch_size // WORLD_SIZE * 2,
-        #                                    imgsz=imgsz,
-        #                                    model=ema.ema,
-        #                                    single_cls=single_cls,
-        #                                    dataloader=val_loader,
-        #                                    save_dir=save_dir,
-        #                                    save_json= False,
-        #                                    verbose=n_attr < 50 and final_epoch,
-        #                                    plots=plots and final_epoch,
-        #                                    callbacks=callbacks,
-        #                                    compute_loss=compute_loss)
-        #
-        #     # Update best mAP
-        #     fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
-        #     if fi > best_fitness:
-        #         best_fitness = fi
-        #     log_vals = list(mloss) + list(results) + lr
-        #     callbacks.on_fit_epoch_end(log_vals, epoch, best_fitness, fi)
-        #
-        #     # Save model
-        #     if (not nosave) or (final_epoch and not evolve):  # if save
-        #         ckpt = {'epoch': epoch,
-        #                 'best_fitness': best_fitness,
-        #                 'model': deepcopy(de_parallel(model)).half(),
-        #                 'ema': deepcopy(ema.ema).half(),
-        #                 'updates': ema.updates,
-        #                 'optimizer': optimizer.state_dict(),
-        #                 'wandb_id': loggers.wandb.wandb_run.id if loggers.wandb else None}
-        #
-        #         # Save last, best and delete
-        #         torch.save(ckpt, last)
-        #         if best_fitness == fi:
-        #             torch.save(ckpt, best)
-        #         del ckpt
-        #         callbacks.on_model_save(last, epoch, final_epoch, best_fitness, fi)
+        if RANK in [-1, 0]:
+            # mAP
+            callbacks.on_train_epoch_end(epoch=epoch)
+            ema.update_attr(model, include=['yaml', 'n_attr', 'hyp', 'names', 'stride', 'class_weights'])
+            final_epoch = epoch + 1 == epochs
+            if not noval or final_epoch:  # Calculate mAP
+                results, maps, _ = val.run(data_dict,
+                                           batch_size=batch_size // WORLD_SIZE * 2,
+                                           imgsz=imgsz,
+                                           model=ema.ema,
+                                           single_cls=single_cls,
+                                           dataloader=val_loader,
+                                           save_dir=save_dir,
+                                           save_json= False,
+                                           verbose=n_attr < 50 and final_epoch,
+                                           plots=plots and final_epoch,
+                                           callbacks=callbacks,
+                                           compute_loss=compute_loss)
+
+            # Update best mAP
+            fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
+            if fi > best_fitness:
+                best_fitness = fi
+            log_vals = list(mloss) + list(results) + lr
+            callbacks.on_fit_epoch_end(log_vals, epoch, best_fitness, fi)
+
+            # Save model
+            if (not nosave) or (final_epoch and not evolve):  # if save
+                ckpt = {'epoch': epoch,
+                        'best_fitness': best_fitness,
+                        'model': deepcopy(de_parallel(model)).half(),
+                        'ema': deepcopy(ema.ema).half(),
+                        'updates': ema.updates,
+                        'optimizer': optimizer.state_dict(),
+                        'wandb_id': loggers.wandb.wandb_run.id if loggers.wandb else None}
+
+                # Save last, best and delete
+                torch.save(ckpt, last)
+                if best_fitness == fi:
+                    torch.save(ckpt, best)
+                del ckpt
+                callbacks.on_model_save(last, epoch, final_epoch, best_fitness, fi)
 
 
-        final_epoch = epoch + 1 == epochs
-        if final_epoch:
-            ckpt = {'epoch': epoch,
-                    'best_fitness': best_fitness,
-                    'model': deepcopy(de_parallel(model)).half(),
-                    'ema': deepcopy(ema.ema).half(),
-                    'updates': ema.updates,
-                    'optimizer': optimizer.state_dict(),
-                    'wandb_id': loggers.wandb.wandb_run.id if loggers.wandb else None}
-            torch.save(ckpt, last)
-            del ckpt
+        # final_epoch = epoch + 1 == epochs
+        # if final_epoch:
+        #     ckpt = {'epoch': epoch,
+        #             'best_fitness': best_fitness,
+        #             'model': deepcopy(de_parallel(model)).half(),
+        #             'ema': deepcopy(ema.ema).half(),
+        #             'updates': ema.updates,
+        #             'optimizer': optimizer.state_dict(),
+        #             'wandb_id': loggers.wandb.wandb_run.id if loggers.wandb else None}
+        #     torch.save(ckpt, last)
+        #     del ckpt
 
         # end epoch ----------------------------------------------------------------------------------------------------
+    loss_file.write(' '.join([str(x) for x in loss_items]) + '\n')
     # end training -----------------------------------------------------------------------------------------------------
     if RANK in [-1, 0]:
         LOGGER.info(f'\n{epoch - start_epoch + 1} epochs completed in {(time.time() - t0) / 3600:.3f} hours.')

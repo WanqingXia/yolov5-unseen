@@ -526,6 +526,7 @@ def non_max_suppression(prediction, attribute_matrix, conf_thres=0.25, iou_thres
     nc = 21 # hard coded nc
     xc = prediction[..., 4] > conf_thres  # candidates
     some = prediction[..., 4].cpu().detach().numpy()
+    some2 = prediction.cpu().detach().numpy()
     # Checks
     assert 0 <= conf_thres <= 1, f'Invalid Confidence threshold {conf_thres}, valid values are between 0.0 and 1.0'
     assert 0 <= iou_thres <= 1, f'Invalid IoU {iou_thres}, valid values are between 0.0 and 1.0'

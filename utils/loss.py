@@ -1,4 +1,5 @@
 # Loss functions
+import math
 
 import torch
 import torch.nn as nn
@@ -149,7 +150,7 @@ class ComputeLoss:
                     t = tattr[i]
                     some = ps[:, 5:].sigmoid()
                     # lcls += self.BCEcls(ps[:, 5:].sigmoid(), t)  # BCE
-                    lcls += -(t*torch.log(some)+(1.0-t)*torch.log(1.0-some)).sum()
+                    lcls += -(t *torch.clamp_min(torch.log(some), -5.0)+ (1.0-t) * torch.clamp_min(torch.log(1.0-some), -5.0)).mean()
                     # sim_mat, one_mat = torch.zeros(t.shape[0], device=device), torch.ones(t.shape[0], device=device)
                     # for j in range(t.shape[0]):
                     #     p_array = ps[j,5:].cpu().detach().numpy()
@@ -161,8 +162,8 @@ class ComputeLoss:
                 # with open('targets.txt', 'a') as file:
                 #     [file.write('%11.5g ' * 4 % tuple(x) + '\n') for x in torch.cat((txy[i], twh[i]), 1)]
 
-            # obji = self.BCEobj(pi[..., 4], tobj)
-            obji = -(tobj*torch.log(pi[..., 4].sigmoid())+(1.0-tobj)*torch.log(1.0-pi[..., 4].sigmoid())).sum()
+            obji = self.BCEobj(pi[..., 4], tobj)
+            # obji = -(tobj*torch.log(pi[..., 4].sigmoid())+(1.0-tobj)*torch.log(1.0-pi[..., 4].sigmoid())).sum()
             lobj += obji * self.balance[i]  # obj loss
             if self.autobalance:
                 self.balance[i] = self.balance[i] * 0.9999 + 0.0001 / obji.detach().item()
