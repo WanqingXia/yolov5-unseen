@@ -255,6 +255,24 @@ def create_data_data(classes_file):
     data_data.write("test=" + save_file_root + "/test_data.txt\n")
     data_data.write("names=" + save_file_root + "/my_classes.names\n")
 
+def copy_detect_files():
+    dest_path = './data/images'
+    if not os.path.exists(dest_path):
+        os.makedirs(dest_path)
+    for i in range(0, 92):
+        if i < 10:
+            img_path = os.path.join("../YCB_Video_Dataset/data/000{}".format(i), "000001-color.png")
+            if os.path.exists(img_path) is False:
+                print("warning: image file does't exist, number 000{}".format(i))
+            else:
+                shutil.copyfile(img_path, os.path.join(dest_path, 'number{}.png'.format(i)))
+        else:
+            img_path = os.path.join("../YCB_Video_Dataset/data/00{}".format(i), "000001-color.png")
+            if os.path.exists(img_path) is False:
+                print("warning: image file does't exist, number 00{}".format(i))
+            else:
+                shutil.copyfile(img_path, os.path.join(dest_path, 'number{}.png'.format(i)))
+
 def main():
     # read classes from classes.txt and translate to my_classes
     classes = open(class_root, 'r').readlines()
@@ -283,6 +301,9 @@ def main():
 
     # create data.data file
     create_data_data(new_class_dict)
+
+    # copy one image from 92 videos to data/images for detect.py
+    copy_detect_files()
 
 if __name__ == '__main__':
     main()

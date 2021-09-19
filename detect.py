@@ -22,6 +22,8 @@ from utils.general import check_img_size, check_requirements, check_imshow, colo
     apply_classifier, scale_coords, xyxy2xywh, strip_optimizer, set_logging, increment_path, save_one_box
 from utils.plots import colors, plot_one_box
 from utils.torch_utils import select_device, load_classifier, time_sync
+import csv
+import numpy as np
 
 
 @torch.no_grad()
@@ -70,7 +72,8 @@ def run(weights='yolov5s.pt',  # model.pt path(s)
     if pt:
         model = attempt_load(weights, map_location=device)  # load FP32 model
         stride = int(model.stride.max())  # model stride
-        names = model.module.names if hasattr(model, 'module') else model.names  # get class names
+        names = [str(x) for x in range(0,21)] #model.module.names if hasattr(model, 'module') else model.names  # get class names
+
         if half:
             model.half()  # to FP16
         if classify:  # second-stage classifier
@@ -116,7 +119,14 @@ def run(weights='yolov5s.pt',  # model.pt path(s)
             pred = torch.tensor(session.run([session.get_outputs()[0].name], {session.get_inputs()[0].name: img}))
 
         # NMS
-        pred = non_max_suppression(pred, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
+        with open("attributes.csv", "r") as file:
+            csv_file = csv.reader(file)
+            header = next(csv_file)
+            attribute_matrix = []
+            for row in csv_file:
+                attribute_matrix.append(row[1:])
+        attribute_matrix = np.array(attribute_matrix)
+        pred = non_max_suppression(pred,attribute_matrix, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
         t2 = time_sync()
 
         # Second-stage classifier (optional)
@@ -199,7 +209,7 @@ def run(weights='yolov5s.pt',  # model.pt path(s)
 
 def parse_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', nargs='+', type=str, default='yolov5s.pt', help='model.pt path(s)')
+    parser.add_argument('--weights', nargs='+', type=str, default='./runs/train/mosaic_all/weights/last.pt', help='model.pt path(s)')
     parser.add_argument('--source', type=str, default='data/images', help='file/dir/URL/glob, 0 for webcam')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.25, help='confidence threshold')

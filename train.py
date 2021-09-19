@@ -193,8 +193,8 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     imgsz = check_img_size(opt.imgsz, gs, floor=gs * 2)  # verify imgsz is gs-multiple
 
     # Trainloader
-    train_loader, dataset = create_dataloader(train_path, imgsz, batch_size // WORLD_SIZE, gs, single_cls, sample_num=10000,
-                                              hyp=hyp, augment=False, cache=opt.cache, rect=opt.rect, rank=RANK,
+    train_loader, dataset = create_dataloader(train_path, imgsz, batch_size // WORLD_SIZE, gs, single_cls, sample_num=0,
+                                              hyp=hyp, augment=True, cache=opt.cache, rect=opt.rect, rank=RANK,
                                               workers=workers, image_weights=opt.image_weights, quad=opt.quad,
                                               prefix=colorstr('train: '))
     nb = len(train_loader)  # number of batches
@@ -386,7 +386,7 @@ def parse_opt(known=False):
     parser.add_argument('--cfg', type=str, default='yolov5s.yaml', help='model.yaml path') # using yolov5x
     parser.add_argument('--data', type=str, default='ycb_unseen.yaml', help='dataset.yaml path')# data.data file
     parser.add_argument('--hyp', type=str, default='hyp.scratch.yaml', help='hyperparameters path')
-    parser.add_argument('--epochs', type=int, default=30)
+    parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--batch-size', type=int, default=16, help='total batch size for all GPUs')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='train, val image size (pixels)') # 640 for all ycb images
     parser.add_argument('--rect', action='store_true', help='rectangular training')
@@ -394,7 +394,7 @@ def parse_opt(known=False):
     parser.add_argument('--nosave', action='store_true', help='only save final checkpoint')
     parser.add_argument('--noval', action='store_true', help='only validate final epoch')
     parser.add_argument('--noautoanchor', action='store_true', help='disable autoanchor check')
-    parser.add_argument('--evolve', type=int, nargs='?', const=0, help='evolve hyperparameters for x generations')
+    parser.add_argument('--evolve', type=int, nargs='?', const=100, help='evolve hyperparameters for x generations')
     parser.add_argument('--cache', type=str, nargs='?', const='ram', help='--cache images in "ram" (default) or "disk"')
     parser.add_argument('--image-weights', action='store_true', help='use weighted image selection for training')
     parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')

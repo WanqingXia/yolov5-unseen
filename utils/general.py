@@ -533,8 +533,8 @@ def non_max_suppression(prediction, attribute_matrix, conf_thres=0.25, iou_thres
 
     # Settings
     min_wh, max_wh = 2, 4096  # (pixels) minimum and maximum box width and height
-    max_nms = 30000  # maximum number of boxes into torchvision.ops.nms()
-    time_limit = 10.0  # seconds to quit after
+    max_nms = 300  # maximum number of boxes into torchvision.ops.nms()
+    time_limit = 20.0  # seconds to quit after
     redundant = True  # require redundant detections
     multi_label &= nc > 1  # multiple labels per box (adds 0.5ms/img)
     merge = False  # use merge-NMS
@@ -575,7 +575,7 @@ def non_max_suppression(prediction, attribute_matrix, conf_thres=0.25, iou_thres
 
         # Filter by class
         if classes is not None:
-            x = x[(x[:, 5:6] == torch.tensor(classes, device=x.device)).any(1)]
+            x = x[(x[:, 5] == torch.tensor(classes, device=x.device)).any(1)]
 
         # Apply finite constraint
         # if not torch.isfinite(x).all():

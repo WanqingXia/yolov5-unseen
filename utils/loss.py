@@ -97,7 +97,7 @@ class ComputeLoss:
         h = model.hyp  # hyperparameters
 
         # Define criteria
-        BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['cls_pw']], device=device), reduction='mean')
+        BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['cls_pw']], device=device))
         BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['obj_pw']], device=device))
         self.MSEcls = nn.BCELoss(reduction='sum')
         self.MSEobj = nn.BCELoss(reduction='sum')
@@ -149,8 +149,12 @@ class ComputeLoss:
                 if self.n_attr > 1:  # semantic loss
                     t = tattr[i]
                     some = ps[:, 5:].sigmoid()
-                    # lcls += self.BCEcls(ps[:, 5:].sigmoid(), t)  # BCE
-                    lcls += -(t *torch.clamp_min(torch.log(some), -5.0)+ (1.0-t) * torch.clamp_min(torch.log(1.0-some), -5.0)).mean()
+                    lcls += self.BCEcls(ps[:, 5:], t)  # BCE
+                    # lcls2 += -(t *torch.clamp_min(torch.log(some), -5.0)+
+                    #           (1.0-t) * torch.clamp_min(torch.log(1.0-some), -5.0)).mean()
+                    if math.isnan(lcls):
+                        print(lcls)
+                        raise Exception('NaN')
                     # sim_mat, one_mat = torch.zeros(t.shape[0], device=device), torch.ones(t.shape[0], device=device)
                     # for j in range(t.shape[0]):
                     #     p_array = ps[j,5:].cpu().detach().numpy()
@@ -163,7 +167,11 @@ class ComputeLoss:
                 #     [file.write('%11.5g ' * 4 % tuple(x) + '\n') for x in torch.cat((txy[i], twh[i]), 1)]
 
             obji = self.BCEobj(pi[..., 4], tobj)
-            # obji = -(tobj*torch.log(pi[..., 4].sigmoid())+(1.0-tobj)*torch.log(1.0-pi[..., 4].sigmoid())).sum()
+            if math.isnan(obji):
+                print(obji)
+                raise Exception('NaN')
+            # obji2 = -(tobj*torch.clamp_min(torch.log(pi[..., 4].sigmoid()), -5.0)+
+            #           (1.0-tobj)*torch.clamp_min(torch.log(1.0-pi[..., 4].sigmoid()), -5.0)).mean()
             lobj += obji * self.balance[i]  # obj loss
             if self.autobalance:
                 self.balance[i] = self.balance[i] * 0.9999 + 0.0001 / obji.detach().item()

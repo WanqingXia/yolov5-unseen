@@ -7,6 +7,7 @@ Usage:
 import argparse
 import sys
 import csv
+import os
 from pathlib import Path
 from threading import Thread
 
@@ -133,7 +134,7 @@ def run(data,
         if device.type != 'cpu':
             model(torch.zeros(1, 3, imgsz, imgsz).to(device).type_as(next(model.parameters())))  # run once
         task = task if task in ('train', 'val', 'test') else 'val'  # path to train/val/test images
-        dataloader = create_dataloader(data[task], imgsz, batch_size, gs, single_cls,sample_num = 4800, pad=0.5, rect=True,
+        dataloader = create_dataloader(data[task], imgsz, batch_size, gs, single_cls,sample_num = 0, pad=0.5, rect=True,
                                        prefix=colorstr(f'{task}: '))[0]
 
     seen = 0
@@ -235,9 +236,14 @@ def run(data,
     else:
         nt = torch.zeros(1)
 
+
     # Print results
+    res_file = open(os.path.join(save_dir, 'results.txt'), 'w')
     pf = '%20s' + '%11i' * 2 + '%11.3g' * 4  # print format
     print(pf % ('all', seen, nt.sum(), mp, mr, map50, map))
+
+    res_file.write(('%20s' + '%11s' * 6) % ('Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95')+'\n')
+    res_file.write((pf % ('all', seen, nt.sum(), mp, mr, map50, map))+'\n')
     # with open('some_result.txt',"w") as f:
     #     f.write(str(Tp))
     #     f.write('\n')
@@ -257,6 +263,7 @@ def run(data,
     if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
         for i, c in enumerate(ap_class):
             print(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
+            res_file.write((pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))+'\n')
 
     # Print speeds
     t = tuple(x / seen * 1E3 for x in (t0, t1, t2))  # speeds per image
@@ -283,10 +290,10 @@ def run(data,
 def parse_opt():
     parser = argparse.ArgumentParser(prog='val.py')
     parser.add_argument('--data', type=str, default='ycb_unseen.yaml', help='dataset.yaml path')
-    parser.add_argument('--weights', nargs='+', type=str, default='./runs/train/exp16/weights/last.pt', help='model.pt path(s)')
+    parser.add_argument('--weights', nargs='+', type=str, default='./runs/train/mosaic_all/weights/last.pt', help='model.pt path(s)')
     parser.add_argument('--batch-size', type=int, default=16, help='batch size')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='inference size (pixels)')
-    parser.add_argument('--conf-thres', type=float, default=0.5, help='confidence threshold')
+    parser.add_argument('--conf-thres', type=float, default=0.4, help='confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.45, help='NMS IoU threshold')
     parser.add_argument('--task', default='test', help='train, val, test, speed or study')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
