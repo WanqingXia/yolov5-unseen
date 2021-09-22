@@ -524,9 +524,16 @@ def non_max_suppression(prediction, attribute_matrix, conf_thres=0.25, iou_thres
     # [0-3]x,y,w,h, [4]confidence [5-21]attributes
     # nc = prediction.shape[2] - 5  # number of classes
     nc = 21 # hard coded nc
+    # new_pred = torch.zeros(prediction.shape[0], prediction.shape[1], prediction.shape[2]+5, device=prediction.device)
+    t = time.time()
+    # for xi, x in enumerate(prediction):
+    #     converted = convert_class(x, attribute_matrix, x.device)
+    #     converted[:,4] = converted[:,4]*0.2 + torch.max(converted[:,5:]) * 0.8
+    #     new_pred[xi] = converted
+    #     print(time.time()-t)
     xc = prediction[..., 4] > conf_thres  # candidates
-    some = prediction[..., 4].cpu().detach().numpy()
-    some2 = prediction.cpu().detach().numpy()
+    # some = new_pred[..., 4].cpu().detach().numpy()
+    # some2 = new_pred.cpu().detach().numpy()
     # Checks
     assert 0 <= conf_thres <= 1, f'Invalid Confidence threshold {conf_thres}, valid values are between 0.0 and 1.0'
     assert 0 <= iou_thres <= 1, f'Invalid IoU {iou_thres}, valid values are between 0.0 and 1.0'
@@ -559,6 +566,7 @@ def non_max_suppression(prediction, attribute_matrix, conf_thres=0.25, iou_thres
         if not x.shape[0]:
             continue
         x = convert_class(x, attribute_matrix, x.device)
+        x[:, 4] = x[:, 4] * 0.2 + torch.max(x[:, 5:]) * 0.8
         # Compute conf
         # x[:, 5:] *= x[:, 4:5]  # conf = obj_conf * cls_conf
 
@@ -570,7 +578,10 @@ def non_max_suppression(prediction, attribute_matrix, conf_thres=0.25, iou_thres
             i, j = (x[:, 5:] > conf_thres).nonzero(as_tuple=False).T
             x = torch.cat((box[i], x[i, j + 5, None], j[:, None].float()), 1)
         else:  # best class only
+            # conf, j = x[:, 5:].max(1, keepdim=True)
+            # x = torch.cat((box, conf, j.float()), 1)[conf.view(-1) > conf_thres]
             conf, j = x[:, 5:].max(1, keepdim=True)
+            conf = torch.reshape(x[:, 4], (x.shape[0],1))
             x = torch.cat((box, conf, j.float()), 1)[conf.view(-1) > conf_thres]
 
         # Filter by class

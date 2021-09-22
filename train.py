@@ -307,61 +307,61 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
         lr = [x['lr'] for x in optimizer.param_groups]  # for loggers
         scheduler.step()
 
-        if RANK in [-1, 0]:
-            # mAP
-            callbacks.on_train_epoch_end(epoch=epoch)
-            ema.update_attr(model, include=['yaml', 'n_attr', 'hyp', 'names', 'stride', 'class_weights'])
-            final_epoch = epoch + 1 == epochs
-            if not noval or final_epoch:  # Calculate mAP
-                results, maps, _ = val.run(data_dict,
-                                           batch_size=batch_size // WORLD_SIZE * 2,
-                                           imgsz=imgsz,
-                                           model=ema.ema,
-                                           single_cls=single_cls,
-                                           dataloader=val_loader,
-                                           save_dir=save_dir,
-                                           save_json= False,
-                                           verbose=n_attr < 50 and final_epoch,
-                                           plots=plots and final_epoch,
-                                           callbacks=callbacks,
-                                           compute_loss=compute_loss)
+        # if RANK in [-1, 0]:
+        #     # mAP
+        #     callbacks.on_train_epoch_end(epoch=epoch)
+        #     ema.update_attr(model, include=['yaml', 'n_attr', 'hyp', 'names', 'stride', 'class_weights'])
+        #     final_epoch = epoch + 1 == epochs
+        #     if not noval or final_epoch:  # Calculate mAP
+        #         results, maps, _ = val.run(data_dict,
+        #                                    batch_size=batch_size // WORLD_SIZE * 2,
+        #                                    imgsz=imgsz,
+        #                                    model=ema.ema,
+        #                                    single_cls=single_cls,
+        #                                    dataloader=val_loader,
+        #                                    save_dir=save_dir,
+        #                                    save_json= False,
+        #                                    verbose=n_attr < 50 and final_epoch,
+        #                                    plots=plots and final_epoch,
+        #                                    callbacks=callbacks,
+        #                                    compute_loss=compute_loss)
+        #
+        #     # Update best mAP
+        #     fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
+        #     if fi > best_fitness:
+        #         best_fitness = fi
+        #     log_vals = list(mloss) + list(results) + lr
+        #     callbacks.on_fit_epoch_end(log_vals, epoch, best_fitness, fi)
+        #
+        #     # Save model
+        #     if (not nosave) or (final_epoch and not evolve):  # if save
+        #         ckpt = {'epoch': epoch,
+        #                 'best_fitness': best_fitness,
+        #                 'model': deepcopy(de_parallel(model)).half(),
+        #                 'ema': deepcopy(ema.ema).half(),
+        #                 'updates': ema.updates,
+        #                 'optimizer': optimizer.state_dict(),
+        #                 'wandb_id': loggers.wandb.wandb_run.id if loggers.wandb else None}
+        #
+        #         # Save last, best and delete
+        #         torch.save(ckpt, last)
+        #         if best_fitness == fi:
+        #             torch.save(ckpt, best)
+        #         del ckpt
+        #         callbacks.on_model_save(last, epoch, final_epoch, best_fitness, fi)
 
-            # Update best mAP
-            fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
-            if fi > best_fitness:
-                best_fitness = fi
-            log_vals = list(mloss) + list(results) + lr
-            callbacks.on_fit_epoch_end(log_vals, epoch, best_fitness, fi)
 
-            # Save model
-            if (not nosave) or (final_epoch and not evolve):  # if save
-                ckpt = {'epoch': epoch,
-                        'best_fitness': best_fitness,
-                        'model': deepcopy(de_parallel(model)).half(),
-                        'ema': deepcopy(ema.ema).half(),
-                        'updates': ema.updates,
-                        'optimizer': optimizer.state_dict(),
-                        'wandb_id': loggers.wandb.wandb_run.id if loggers.wandb else None}
-
-                # Save last, best and delete
-                torch.save(ckpt, last)
-                if best_fitness == fi:
-                    torch.save(ckpt, best)
-                del ckpt
-                callbacks.on_model_save(last, epoch, final_epoch, best_fitness, fi)
-
-
-        # final_epoch = epoch + 1 == epochs
-        # if final_epoch:
-        #     ckpt = {'epoch': epoch,
-        #             'best_fitness': best_fitness,
-        #             'model': deepcopy(de_parallel(model)).half(),
-        #             'ema': deepcopy(ema.ema).half(),
-        #             'updates': ema.updates,
-        #             'optimizer': optimizer.state_dict(),
-        #             'wandb_id': loggers.wandb.wandb_run.id if loggers.wandb else None}
-        #     torch.save(ckpt, last)
-        #     del ckpt
+        final_epoch = epoch + 1 == epochs
+        if final_epoch:
+            ckpt = {'epoch': epoch,
+                    'best_fitness': best_fitness,
+                    'model': deepcopy(de_parallel(model)).half(),
+                    'ema': deepcopy(ema.ema).half(),
+                    'updates': ema.updates,
+                    'optimizer': optimizer.state_dict(),
+                    'wandb_id': loggers.wandb.wandb_run.id if loggers.wandb else None}
+            torch.save(ckpt, last)
+            del ckpt
 
         # end epoch ----------------------------------------------------------------------------------------------------
     loss_file.write(' '.join([str(x) for x in loss_items]) + '\n')
@@ -394,7 +394,7 @@ def parse_opt(known=False):
     parser.add_argument('--nosave', action='store_true', help='only save final checkpoint')
     parser.add_argument('--noval', action='store_true', help='only validate final epoch')
     parser.add_argument('--noautoanchor', action='store_true', help='disable autoanchor check')
-    parser.add_argument('--evolve', type=int, nargs='?', const=100, help='evolve hyperparameters for x generations')
+    parser.add_argument('--evolve', type=int, nargs='?', const=0, help='evolve hyperparameters for x generations')
     parser.add_argument('--cache', type=str, nargs='?', const='ram', help='--cache images in "ram" (default) or "disk"')
     parser.add_argument('--image-weights', action='store_true', help='use weighted image selection for training')
     parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
