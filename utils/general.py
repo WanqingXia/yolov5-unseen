@@ -524,14 +524,15 @@ def non_max_suppression(prediction, attribute_matrix, conf_thres=0.25, iou_thres
     # [0-3]x,y,w,h, [4]confidence [5-21]attributes
     # nc = prediction.shape[2] - 5  # number of classes
     nc = 21 # hard coded nc
-    # new_pred = torch.zeros(prediction.shape[0], prediction.shape[1], prediction.shape[2]+5, device=prediction.device)
-    t = time.time()
-    # for xi, x in enumerate(prediction):
-    #     converted = convert_class(x, attribute_matrix, x.device)
-    #     converted[:,4] = converted[:,4]*0.2 + torch.max(converted[:,5:]) * 0.8
-    #     new_pred[xi] = converted
-    #     print(time.time()-t)
-    xc = prediction[..., 4] > conf_thres  # candidates
+    new_pred = torch.zeros(prediction.shape[0], prediction.shape[1], prediction.shape[2]+5, device=prediction.device)
+    for xi, x in enumerate(prediction):
+        converted = convert_class(x, attribute_matrix, x.device)
+        converted[:,4] = torch.max(converted[:,5:])
+        new_pred[xi] = converted
+
+    # prediction = torch.cat((prediction[..., :5],(prediction[..., 5:] > 0.8).float()),2)
+    # xc = prediction[..., 4] > conf_thres  # candidates
+    xc = new_pred[..., 4] > conf_thres  # candidates
     # some = new_pred[..., 4].cpu().detach().numpy()
     # some2 = new_pred.cpu().detach().numpy()
     # Checks
@@ -553,20 +554,12 @@ def non_max_suppression(prediction, attribute_matrix, conf_thres=0.25, iou_thres
         # x[((x[..., 2:4] < min_wh) | (x[..., 2:4] > max_wh)).any(1), 4] = 0  # width-height
         x = x[xc[xi]]  # confidence
         filtered = x.cpu().detach().numpy()
-        # Cat apriori labels if autolabelling
-        # if labels and len(labels[xi]):
-        #     l = labels[xi]
-        #     v = torch.zeros((len(l), nc + 5), device=x.device)
-        #     v[:, :4] = l[:, 1:5]  # box
-        #     v[:, 4] = 1.0  # conf
-        #     v[range(len(l)), l[:, 0].long() + 5] = 1.0  # cls
-        #     x = torch.cat((x, v), 0)
 
         # If none remain process next image
         if not x.shape[0]:
             continue
         x = convert_class(x, attribute_matrix, x.device)
-        x[:, 4] = x[:, 4] * 0.2 + torch.max(x[:, 5:]) * 0.8
+        # x[:, 4] = x[:, 4] * 0.2 + torch.max(x[:, 5:]) * 0.8
         # Compute conf
         # x[:, 5:] *= x[:, 4:5]  # conf = obj_conf * cls_conf
 
@@ -578,19 +571,15 @@ def non_max_suppression(prediction, attribute_matrix, conf_thres=0.25, iou_thres
             i, j = (x[:, 5:] > conf_thres).nonzero(as_tuple=False).T
             x = torch.cat((box[i], x[i, j + 5, None], j[:, None].float()), 1)
         else:  # best class only
-            # conf, j = x[:, 5:].max(1, keepdim=True)
-            # x = torch.cat((box, conf, j.float()), 1)[conf.view(-1) > conf_thres]
             conf, j = x[:, 5:].max(1, keepdim=True)
-            conf = torch.reshape(x[:, 4], (x.shape[0],1))
             x = torch.cat((box, conf, j.float()), 1)[conf.view(-1) > conf_thres]
+            # conf, j = x[:, 5:].max(1, keepdim=True)
+            # conf = torch.reshape(x[:, 4], (x.shape[0],1))
+            # x = torch.cat((box, conf, j.float()), 1)[conf.view(-1) > conf_thres]
 
         # Filter by class
         if classes is not None:
             x = x[(x[:, 5] == torch.tensor(classes, device=x.device)).any(1)]
-
-        # Apply finite constraint
-        # if not torch.isfinite(x).all():
-        #     x = x[torch.isfinite(x).all(1)]
 
         # Check shape
         n = x.shape[0]  # number of boxes
@@ -613,7 +602,8 @@ def non_max_suppression(prediction, attribute_matrix, conf_thres=0.25, iou_thres
             if redundant:
                 i = i[iou.sum(1) > 1]  # require redundancy
 
-        output[xi] = x[i]
+        # output[xi] = x[i]
+        output[xi] = x
         if (time.time() - t) > time_limit:
             print(f'WARNING: NMS time limit {time_limit}s exceeded')
             break  # time limit exceeded

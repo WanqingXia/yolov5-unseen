@@ -383,10 +383,10 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
 def parse_opt(known=False):
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', type=str, default='', help='initial weights path') # initial weight, disabled
-    parser.add_argument('--cfg', type=str, default='yolov5s.yaml', help='model.yaml path') # using yolov5x
+    parser.add_argument('--cfg', type=str, default='yolo_unseen.yaml', help='model.yaml path') # using yolov5x
     parser.add_argument('--data', type=str, default='ycb_unseen.yaml', help='dataset.yaml path')# data.data file
     parser.add_argument('--hyp', type=str, default='hyp.scratch.yaml', help='hyperparameters path')
-    parser.add_argument('--epochs', type=int, default=10)
+    parser.add_argument('--epochs', type=int, default=5)
     parser.add_argument('--batch-size', type=int, default=16, help='total batch size for all GPUs')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='train, val image size (pixels)') # 640 for all ycb images
     parser.add_argument('--rect', action='store_true', help='rectangular training')

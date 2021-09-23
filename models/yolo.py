@@ -9,6 +9,8 @@ import sys
 from copy import deepcopy
 from pathlib import Path
 
+import torch
+
 FILE = Path(__file__).absolute()
 sys.path.append(FILE.parents[1].as_posix())  # add yolov5/ to path
 
@@ -27,6 +29,25 @@ except ImportError:
 
 LOGGER = logging.getLogger(__name__)
 
+class Box(nn.Module):
+
+    def __init__(self, n_attr=16, anchors=(), ch=(), inplace=True):  # detection layer
+        super().__init__()
+        self.n_attr = n_attr
+        self.no = 1  # number of outputs per anchor
+        self.nl = len(anchors)  # number of detection layers
+        self.na = len(anchors[0]) // 2  # number of anchors
+        self.m = nn.ModuleList(nn.Conv2d(x + (n_attr + 4)*self.na, self.no * self.na, 1) for x in ch[0:3])  # output conv
+        self.inplace = inplace  # use in-place ops (e.g. slice assignment)
+
+    def forward(self, x):
+        for i in range(self.nl):
+            x[i] = self.m[i](x[i])  # conv don't use dropout in validation
+            bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
+            x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
+        if not self.training:
+            x = [x[i].sigmoid() for i in range(len(x))]
+        return x
 
 class Detect(nn.Module):
     stride = None  # strides computed during build
@@ -35,7 +56,7 @@ class Detect(nn.Module):
     def __init__(self, n_attr=16, anchors=(), ch=(), inplace=True):  # detection layer
         super().__init__()
         self.n_attr = n_attr  # number of classes
-        self.no = n_attr + 5  # number of outputs per anchor
+        self.no = n_attr + 4  # number of outputs per anchor
         self.nl = len(anchors)  # number of detection layers
         self.na = len(anchors[0]) // 2  # number of anchors
         self.grid = [torch.zeros(1)] * self.nl  # init grid
@@ -44,7 +65,7 @@ class Detect(nn.Module):
         self.register_buffer('anchor_grid', a.clone().view(self.nl, 1, -1, 1, 1, 2))  # shape(nl,1,na,1,1,2)
         self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv
         self.inplace = inplace  # use in-place ops (e.g. slice assignment)
-        self.drop = nn.Dropout2d(0.5)
+        # self.drop = nn.Dropout2d(0.5)
 
     def forward(self, x):
         # x = x.copy()  # for profiling
@@ -68,9 +89,8 @@ class Detect(nn.Module):
                     wh = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i].view(1, self.na, 1, 1, 2)  # wh
                     y = torch.cat((xy, wh, y[..., 4:]), -1)
                 z.append(y.view(bs, -1, self.no))
-
-        return x if self.training else (torch.cat(z, 1), x)
-
+        # return x if self.training else (torch.cat(z, 1), x)
+        return x if self.training else (z, x)
     @staticmethod
     def _make_grid(nx=20, ny=20):
         yv, xv = torch.meshgrid([torch.arange(ny), torch.arange(nx)])
@@ -102,7 +122,7 @@ class Model(nn.Module):
         # LOGGER.info([x.shape for x in self.forward(torch.zeros(1, ch, 64, 64))])
 
         # Build strides, anchors
-        m = self.model[-1]  # Detect()
+        m = self.model[-2]  # Detect()
         if isinstance(m, Detect):
             s = 256  # 2x min stride
             m.inplace = self.inplace
@@ -113,6 +133,16 @@ class Model(nn.Module):
             self._initialize_biases()  # only run once
             # LOGGER.info('Strides: %s' % m.stride.tolist())
 
+        m = self.model[-1]  # Box()
+        if isinstance(m, Detect):
+            s = 256  # 2x min stride
+            m.inplace = self.inplace
+            m.stride = torch.tensor([s / x.shape[-2] for x in self.forward(torch.zeros(1, ch, s, s))])  # forward
+            m.anchors /= m.stride.view(-1, 1, 1)
+            check_anchor_order(m)
+            self.stride = m.stride
+            self._initialize_biases2()  # only run once
+            # LOGGER.info('Strides: %s' % m.stride.tolist())
         # Init weights, biases
         initialize_weights(self)
         self.info()
@@ -140,7 +170,20 @@ class Model(nn.Module):
         y, dt = [], []  # outputs
         for m in self.model:
             if m.f != -1:  # if not from previous layer
-                x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
+                if m.type == 'models.yolo.Box':
+                    if self.training:
+                        detect_out = y[-1]
+                    else:
+                        detect_out = y[-1][1]
+                    concated = []
+                    for i in range(len(detect_out)):
+                        bs, na, ny, nx, nc = detect_out[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
+                        order_change = detect_out[i].permute(0, 1, 4, 2, 3).contiguous()
+                        squzzed = order_change.view(bs, na*nc, ny, nx)
+                        concated.append(torch.cat((squzzed, y[m.f[i]]),1))
+                    x = concated
+                else:
+                    x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
 
             if profile:
                 o = thop.profile(m, inputs=(x,), verbose=False)[0] / 1E9 * 2 if thop else 0  # FLOPs
@@ -160,7 +203,15 @@ class Model(nn.Module):
 
         if profile:
             LOGGER.info('%.1fms total' % sum(dt))
-        return x
+        if self.training:
+            x = [torch.cat((y[24][i][...,:4], x[i], y[24][i][..., 4:]), 4) for i in range(len(x))]
+            return x
+        else:
+            w = [torch.cat((y[24][1][i][..., :4], x[i], y[24][1][i][..., 4:]), 4) for i in range(len(x))]
+            flatted = [x[i].view(x[i].shape[0], -1, x[i].shape[-1]) for i in range(len(x))]
+            z = [torch.cat((y[24][0][i][..., :4], flatted[i], y[24][0][i][..., 4:]), 2) for i in range(len(flatted))]
+            return(torch.cat(z,1),w)
+
 
     def _descale_pred(self, p, flips, scale, img_size):
         # de-scale predictions following augmented inference (inverse operation)
@@ -182,11 +233,21 @@ class Model(nn.Module):
     def _initialize_biases(self, cf=None):  # initialize biases into Detect(), cf is class frequency
         # https://arxiv.org/abs/1708.02002 section 3.3
         # cf = torch.bincount(torch.tensor(np.concatenate(dataset.labels, 0)[:, 0]).long(), minlength=nc) + 1.
-        m = self.model[-1]  # Detect() module
+        m = self.model[-2]  # Detect() module
         for mi, s in zip(m.m, m.stride):  # from
             b = mi.bias.view(m.na, -1)  # conv.bias(255) to (3,85)
-            b.data[:, 4] += math.log(8 / (640 / s) ** 2)  # obj (8 objects per 640 image)
-            b.data[:, 5:] += math.log(0.6 / (m.n_attr - 0.99)) if cf is None else torch.log(cf / cf.sum())  # cls
+            # b.data[:, 4] += math.log(8 / (640 / s) ** 2)  # obj (8 objects per 640 image)
+            b.data[:, 4:] += math.log(0.6 / (m.n_attr - 0.99)) if cf is None else torch.log(cf / cf.sum())  # cls
+            mi.bias = torch.nn.Parameter(b.view(-1), requires_grad=True)
+
+    def _initialize_biases2(self, cf=None):  # initialize biases into Detect(), cf is class frequency
+        # https://arxiv.org/abs/1708.02002 section 3.3
+        # cf = torch.bincount(torch.tensor(np.concatenate(dataset.labels, 0)[:, 0]).long(), minlength=nc) + 1.
+        m = self.model[-1]  # Box() module
+        for mi, s in zip(m.m, m.stride):  # from
+            b = mi.bias.view(m.na, -1)  # conv.bias(255) to (3,85)
+            b.data[:, 0] += math.log(8 / (640 / s) ** 2)  # obj (8 objects per 640 image)
+            # b.data[:, 4:] += math.log(0.6 / (m.n_attr - 0.99)) if cf is None else torch.log(cf / cf.sum())  # cls
             mi.bias = torch.nn.Parameter(b.view(-1), requires_grad=True)
 
     def _print_biases(self):
@@ -225,8 +286,10 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
     LOGGER.info('\n%3s%18s%3s%10s  %-40s%-30s' % ('', 'from', 'n', 'params', 'module', 'arguments'))
     anchors, nc, gd, gw = d['anchors'], d['nc'], d['depth_multiple'], d['width_multiple']
     na = (len(anchors[0]) // 2) if isinstance(anchors, list) else anchors  # number of anchors
-    no = na * (nc + 5)  # number of outputs = anchors * (attributes + 5)
-
+    no = na * (nc + 4)  # number of outputs = anchors * (attributes + 5)
+    # layers: structure of each layer
+    # savelist: all layers that's not from -1
+    # c2: number of output channels in current layer
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
     for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from, number, module, args
         m = eval(m) if isinstance(m, str) else m  # eval strings
@@ -239,6 +302,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         n = n_ = max(round(n * gd), 1) if n > 1 else n  # depth gain
         if m in [Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, DWConv, MixConv2d, Focus, CrossConv, BottleneckCSP,
                  C3, C3TR, C3SPP]:
+            # c1: input channel c2:output channel ch: channel of all layers
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
@@ -259,6 +323,8 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             c2 = ch[f] * args[0] ** 2
         elif m is Expand:
             c2 = ch[f] // args[0] ** 2
+        elif m is Box:
+            args.append([ch[x] for x in f])
         else:
             c2 = ch[f]
 
