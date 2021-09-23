@@ -207,9 +207,9 @@ def run(data,
                 scale_coords(img[si].shape[1:], tbox, shape, shapes[si][1])  # native-space labels
                 labelsn = torch.cat((labels[:, 0:1], tbox), 1)  # native-space labels
                 correct = process_batch(predn, labelsn, iouv)
-                # for x in range(predn.shape[0]):
-                #     Pred_t[int(predn[x][5])] += 1
-                # accumalate_img(predn, labelsn, iouv, Tp)
+                for x in range(predn.shape[0]):
+                    Pred_t[int(predn[x][5])] += 1
+                accumalate_img(predn, labelsn, iouv, Tp)
 
                 # if plots:
                     # confusion_matrix.process_batch(predn, labelsn)
@@ -244,12 +244,12 @@ def run(data,
 
     res_file.write(('%20s' + '%11s' * 6) % ('Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95')+'\n')
     res_file.write((pf % ('all', seen, nt.sum(), mp, mr, map50, map))+'\n')
-    # with open('some_result.txt',"w") as f:
-    #     f.write(str(Tp))
-    #     f.write('\n')
-    #     f.write(str(Pred_t))
-    #     f.write('\n')
-    #     f.write(str(GT_t))
+    with open(os.path.join(save_dir,'some_result.txt'),"w") as f:
+        # f.write(str(Tp))
+        # f.write('\n')
+        f.write(str(Pred_t))
+        f.write('\n')
+        f.write(str(GT_t))
     # with open('PR_result.txt', "w") as file:
     #     for i in range(nc):
     #         file.write('class: %2s \n' % i)
@@ -290,12 +290,12 @@ def run(data,
 def parse_opt():
     parser = argparse.ArgumentParser(prog='val.py')
     parser.add_argument('--data', type=str, default='ycb_unseen.yaml', help='dataset.yaml path')
-    parser.add_argument('--weights', nargs='+', type=str, default='./runs/train/mosaic_all/weights/last.pt', help='model.pt path(s)')
+    parser.add_argument('--weights', nargs='+', type=str, default='./runs/train/new5/weights/last.pt', help='model.pt path(s)')
     parser.add_argument('--batch-size', type=int, default=16, help='batch size')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='inference size (pixels)')
-    parser.add_argument('--conf-thres', type=float, default=0.4, help='confidence threshold')
+    parser.add_argument('--conf-thres', type=float, default=0.2, help='confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.45, help='NMS IoU threshold')
-    parser.add_argument('--task', default='val', help='train, val, test, speed or study')
+    parser.add_argument('--task', default='test', help='train, val, test, speed or study')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--single-cls', action='store_true', help='treat as single-class dataset')
     parser.add_argument('--augment', action='store_true', help='augmented inference')

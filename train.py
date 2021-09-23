@@ -247,8 +247,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                 f'Logging results to {save_dir}\n'
                 f'Starting training for {epochs} epochs...')
     loss_file = open(opt.save_dir + "/losses.txt", 'w')
-    losses = []
-    losses2 = []
+
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
         # set the model to training mode
         model.train()
